@@ -31,6 +31,7 @@ git clone https://github.com/Andro-Spy/Public_Link.git
 cd Public_Link
 chmod +x public
 sudo mv public /usr/bin/
+cd ..
 rm -rf Public_Link
 ```
 
