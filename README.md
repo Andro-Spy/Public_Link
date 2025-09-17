@@ -27,7 +27,7 @@ Just Copy Paste this command in your terminal.
 
 
 ```
-git clone https://github.com/YOUR_GITHUB_USERNAME/Public_Link.git
+git clone https://github.com/Andro-Spy/Public_Link.git
 cd Public_Link
 chmod +x public
 sudo mv public /usr/bin/
