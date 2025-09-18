@@ -40,7 +40,7 @@ Now run this Command.
 ```
 public
 ```
-
+Use `sudo rm /usr/bin/public` for remove.
 
 ## Example Workflow
 ```
